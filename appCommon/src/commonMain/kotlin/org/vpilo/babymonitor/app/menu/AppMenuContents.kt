@@ -47,6 +47,8 @@ import org.vpilo.babymonitor.settings.presentation.composables.MenuItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingEnumItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItemViewModel
+import androidx.compose.material.icons.filled.VolumeUp
+import org.vpilo.babymonitor.settings.model.settings.AudioOutputRoute
 
 @Composable
 fun ColumnScope.AppMenuContents(
