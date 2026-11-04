@@ -97,6 +97,13 @@ fun ColumnScope.AppMenuContents(
         imageVector = Icons.Default.Person,
     )
 
+    if (currentRole == AppRole.CLIENT && PlatformAvailability.AndroidOnly.isSupportedOnCurrentPlatform) {
+        MenuSettingEnumItem(
+            setting = Setting.AudioOutputRoute,
+            imageVector = Icons.Default.VolumeUp,
+        )
+    }
+
     MenuDivider()
 
     MenuSettingItem(
