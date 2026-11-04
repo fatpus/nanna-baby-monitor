@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NoiseAware
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import babymonitor.appcommon.generated.resources.Res
@@ -42,13 +43,12 @@ import org.vpilo.babymonitor.presentation.composables.MenuDivider
 import org.vpilo.babymonitor.settings.model.PlatformAvailability
 import org.vpilo.babymonitor.settings.model.Setting
 import org.vpilo.babymonitor.settings.model.isSupportedOnCurrentPlatform
+import org.vpilo.babymonitor.settings.model.settings.AudioOutputRoute
 import org.vpilo.babymonitor.settings.model.settings.DeviceName
 import org.vpilo.babymonitor.settings.presentation.composables.MenuItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingEnumItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItemViewModel
-import androidx.compose.material.icons.filled.VolumeUp
-import org.vpilo.babymonitor.settings.model.settings.AudioOutputRoute
 
 @Composable
 fun ColumnScope.AppMenuContents(
