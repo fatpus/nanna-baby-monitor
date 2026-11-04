@@ -47,6 +47,8 @@ import org.vpilo.babymonitor.settings.presentation.composables.MenuItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingEnumItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItem
 import org.vpilo.babymonitor.settings.presentation.composables.MenuSettingItemViewModel
+import androidx.compose.material.icons.filled.VolumeUp
+import org.vpilo.babymonitor.settings.model.settings.AudioOutputRoute
 
 @Composable
 fun ColumnScope.AppMenuContents(
@@ -94,6 +96,13 @@ fun ColumnScope.AppMenuContents(
         setting = Setting.DeviceName,
         imageVector = Icons.Default.Person,
     )
+
+    if (currentRole == AppRole.CLIENT && PlatformAvailability.AndroidOnly.isSupportedOnCurrentPlatform) {
+        MenuSettingEnumItem(
+            setting = Setting.AudioOutputRoute,
+            imageVector = Icons.Default.VolumeUp,
+        )
+    }
 
     MenuDivider()
 
