@@ -102,14 +102,15 @@ internal actual class DefaultAudioPlaybackRepository actual constructor(
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         val preferred =
             when (route) {
-                AudioOutputRoute.SPEAKER ->
+                AudioOutputRoute.SPEAKER -> {
                     devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-
-                AudioOutputRoute.EARPIECE ->
+                }
+                AudioOutputRoute.EARPIECE -> {
                     devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE }
-
-                AudioOutputRoute.HEADSET ->
+                }
+                AudioOutputRoute.HEADSET -> {
                     devices.firstOrNull { it.type in HEADSET_TYPES }
+                }
             }
         if (preferred != null) {
             val applied = audioTrack.setPreferredDevice(preferred)
