@@ -3,20 +3,18 @@ package org.vpilo.babymonitor.network.client
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
-import io.ktor.client.plugins.websocket.WebSocketException
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.wss
 import io.ktor.http.HttpMethod
 import io.ktor.websocket.CloseReason
+import io.ktor.websocket.close
 import io.ktor.websocket.pingInterval
 import io.ktor.websocket.timeout
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.ClosedReceiveChannelException
-import kotlinx.coroutines.channels.ClosedSendChannelException
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 import org.vpilo.babymonitor.common.Logger
-import org.vpilo.babymonitor.common.ktx.prettify
 import org.vpilo.babymonitor.model.AppRole
 import org.vpilo.babymonitor.model.Device
 import org.vpilo.babymonitor.model.NetworkAddress
@@ -27,7 +25,6 @@ import org.vpilo.babymonitor.network.model.RelayConfiguration
 import org.vpilo.babymonitor.network.model.transport.VersionMismatchException
 import org.vpilo.babymonitor.network.security.crypto.PinnedTrustManager
 import org.vpilo.babymonitor.network.security.relay.relayWss
-import java.net.ConnectException
 import java.net.ProtocolException
 import java.security.cert.CertificateException
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,100 +34,30 @@ internal class WebSocketConnectionHandler(
     private val device: Device,
     private val endpointPath: String,
     private val sessionBlock: suspend DefaultClientWebSocketSession.() -> Unit,
-    private val onDisconnected: suspend (exception: Throwable) -> Unit = {},
     private val expectedFingerprint: String,
-    private val coroutineScope: CoroutineScope,
     private val relayConfiguration: RelayConfiguration? = null,
 ) {
-    private var connectionJob: Job? = null
-
-    fun connect() {
-        if (connectionJob?.isActive == true) {
-            return
-        }
-        connectionJob =
-            coroutineScope.launch {
-                if (device is Device.RemoteServer) {
-                    attemptSafeConnection(
-                        target = relayConfiguration.toString(),
-                        connect = ::handleRelaySession,
-                    ) {
-                        onDisconnected(ConnectException("Relay connection failure"))
-                    }
-                } else {
-                    attemptSafeConnection(
-                        target = device.address.toString(),
-                        connect = { startWebSocket(device.address) },
-                    ) {
-                        Logger.w(TAG) { "Failed to connect to $device for $endpointPath" }
-                        onDisconnected(ConnectException("Connection failure"))
-                    }
-                }
-                connectionJob = null
-            }
-    }
-
-    /**
-     * Runs [connect]; on failure calls [onDisconnected] callback, or [onUnreachable] if the server cannot be reached.
-     */
-    private suspend fun attemptSafeConnection(
-        target: String,
-        connect: suspend () -> Unit,
-        onUnreachable: suspend () -> Unit,
-    ) {
-        var lastException: Exception? = null
-
-        Logger.i(TAG) { "Connecting to $target for $endpointPath (device: $device)" }
-
+    /** Owns one connection and finishes all acquired transport resources before returning. */
+    suspend fun run() {
+        Logger.i(TAG) { "Connecting to $device for $endpointPath" }
         try {
-            connect()
+            if (device is Device.RemoteServer) {
+                handleRelaySession()
+            } else {
+                startWebSocket(device.address)
+            }
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (
             @Suppress("TooGenericExceptionCaught") ex: Exception,
         ) {
-            lastException = ex
-        } finally {
-            when (lastException) {
-                is CancellationException,
-                null,
-                    -> {
-                        Logger.i(TAG) { "Connection closed to $target for $endpointPath" }
-                        onDisconnected(lastException ?: CancellationException("Closed by client"))
-                    }
-
-                is CertificateException -> {
-                    Logger.w(TAG) { "Certificate mismatch for server $target for $endpointPath: ${lastException.prettify()}" }
-                    onDisconnected(lastException)
-                }
-
-                is PairingRevokedException -> {
-                    Logger.w(TAG) { "Pairing revoked by server $target for $endpointPath: ${lastException.prettify()}" }
-                    onDisconnected(lastException)
-                }
-
-                is VersionMismatchException -> {
-                    Logger.w(TAG) { "Version mismatch for $target for $endpointPath: ${lastException.prettify()}" }
-                    onDisconnected(lastException)
-                }
-
-                is ClosedSendChannelException,
-                is ClosedReceiveChannelException,
-                is WebSocketException,
-                is ProtocolException,
-                    -> {
-                        Logger.i(TAG) { "Connection closed by server $target for $endpointPath: ${lastException.prettify()}" }
-                        onDisconnected(lastException)
-                    }
-
-                else -> {
-                    Logger.w(TAG) { "Failed to connect to $target for $endpointPath: ${lastException.prettify()}" }
-                    onUnreachable()
-                }
-            }
+            // CIO and structured child failures can wrap security/protocol failures.
+            throw (ex.terminalConnectionFailureOrNull() ?: ex)
         }
     }
 
     private suspend fun startWebSocket(host: NetworkAddress) {
-        val pinnedClient =
+        val client =
             HttpClient(CIO) {
                 install(WebSockets) { clientPingInterval = Constants.WEBSOCKET_PING_PERIOD }
                 engine {
@@ -140,8 +67,8 @@ internal class WebSocketConnectionHandler(
                     }
                 }
             }
-        pinnedClient.use {
-            it.wss(
+        try {
+            client.wss(
                 method = HttpMethod.Get,
                 host = host.address,
                 port = Constants.SERVICE_PORT,
@@ -149,20 +76,27 @@ internal class WebSocketConnectionHandler(
             ) {
                 pingInterval = Constants.WEBSOCKET_PING_PERIOD
                 timeout = Constants.WEBSOCKET_TIMEOUT
-
                 runSession()
+            }
+        } finally {
+            client.close()
+            // CIO may retain a TLS producer after failed negotiation. These jobs belong
+            // exclusively to this connection, so stop remaining children before joining.
+            client.coroutineContext.cancel()
+            client.engine.coroutineContext.cancel()
+            withContext(NonCancellable) {
+                client.coroutineContext.job.join()
+                client.engine.coroutineContext.job
+                    .join()
             }
         }
     }
 
     private suspend fun handleRelaySession() {
-        checkNotNull(relayConfiguration) { "Relay configuration must be provided for remote servers" }
-
-        if (!relayConfiguration.isConfigured) {
-            error("No relay configured - cannot connect to $device")
-        }
+        val configuration = checkNotNull(relayConfiguration) { "Relay configuration must be provided for remote servers" }
+        check(configuration.isConfigured) { "No relay configured - cannot connect to $device" }
         relayWss(
-            configuration = relayConfiguration,
+            configuration = configuration,
             role = AppRole.CLIENT,
             endpoint = relayEndpointFor(endpointPath),
             serverId = device.id,
@@ -171,29 +105,40 @@ internal class WebSocketConnectionHandler(
         }
     }
 
-    /**
-     * Runs [sessionBlock] and, if the session ends because the server closed it with a policy violation, the connection is dropped
-     * instead of retried.
-     */
     private suspend fun DefaultClientWebSocketSession.runSession() {
+        // Ktor runs the reader in the calling coroutine. The session owns a separate job;
+        // capture that receiver explicitly, before entering the cleanup context.
+        val sessionJob = this.coroutineContext.job
         try {
-            sessionBlock()
-        } catch (
-            @Suppress("TooGenericExceptionCaught") ex: Exception,
-        ) {
-            val reason = closeReason.await() ?: throw ex
-            throw reason.asVersionMismatchExceptionOrNull()
-                ?: when (reason.knownReason) {
-                    CloseReason.Codes.VIOLATED_POLICY -> PairingRevokedException(reason.message)
-                    CloseReason.Codes.PROTOCOL_ERROR -> ProtocolException(reason.message)
-                    else -> ex
-                }
-        }
-    }
+            var readerFailure: Throwable? = null
+            try {
+                sessionBlock()
+            } catch (ex: CancellationException) {
+                throw ex
+            } catch (
+                @Suppress("TooGenericExceptionCaught") ex: Exception,
+            ) {
+                readerFailure = ex
+            }
 
-    fun disconnect() {
-        connectionJob?.cancel()
-        connectionJob = null
+            // A reader or structured child can finish while the peer is still healthy.
+            // Initiate local closure before awaiting the close reason, never the reverse.
+            close()
+            val reason = closeReason.await()
+            val originalTerminalFailure = readerFailure?.terminalConnectionFailureOrNull()
+            val failure =
+                reason?.asVersionMismatchExceptionOrNull()
+                    ?: originalTerminalFailure?.takeUnless { it is ProtocolException }
+                    ?: when (reason?.knownReason) {
+                        CloseReason.Codes.VIOLATED_POLICY -> PairingRevokedException(reason.message)
+                        CloseReason.Codes.PROTOCOL_ERROR -> ProtocolException(reason.message)
+                        else -> originalTerminalFailure ?: readerFailure
+                    }
+            if (failure != null) throw failure
+        } finally {
+            this.cancel()
+            withContext(NonCancellable) { sessionJob.join() }
+        }
     }
 
     private companion object {
@@ -209,7 +154,20 @@ internal class WebSocketConnectionHandler(
     }
 }
 
-/** Thrown when the server closes a connection because this client is no longer paired with it. */
-internal class PairingRevokedException(
-    message: String,
-) : Exception(message)
+/** Finds a domain failure even when structured cancellation and socket teardown wrap it. */
+internal fun Throwable.terminalConnectionFailureOrNull(): Throwable? {
+    val pending = ArrayDeque<Throwable>()
+    val visited = mutableSetOf<Throwable>()
+    val failures = mutableListOf<Throwable>()
+    pending.add(this)
+    while (pending.isNotEmpty()) {
+        val failure = pending.removeFirst()
+        if (!visited.add(failure)) continue
+        failures.add(failure)
+        failure.cause?.let(pending::addLast)
+        failure.suppressedExceptions.forEach(pending::addLast)
+    }
+    return failures.firstOrNull { it is VersionMismatchException }
+        ?: failures.firstOrNull { it is CertificateException || it is PairingRevokedException }
+        ?: failures.firstOrNull { it is ProtocolException }
+}

@@ -5,15 +5,15 @@ import kotlinx.coroutines.launch
 import org.vpilo.babymonitor.errorreport.model.ErrorReportingRepository
 import org.vpilo.babymonitor.model.repository.AppRoleRepository
 import org.vpilo.babymonitor.model.viewmodel.AppViewModel
-import org.vpilo.babymonitor.network.model.repository.IsConnectionAvailableRepository
 import org.vpilo.babymonitor.network.model.repository.NetworkClientRepository
+import org.vpilo.babymonitor.network.model.usecase.IsConnectionAvailableFlowUseCase
 
 @Stable
 class MenuScreenViewModel(
     private val appRoleRepository: AppRoleRepository,
-    private val isConnectionAvailableRepository: IsConnectionAvailableRepository,
     private val networkClientRepository: NetworkClientRepository,
     private val errorReportingRepository: ErrorReportingRepository,
+    private val isConnectionAvailableFlowUseCase: IsConnectionAvailableFlowUseCase,
 ) : AppViewModel<MenuScreenAction, MenuScreenState, MenuScreenEffect>(
         TAG = "MenuScreenViewModel",
         initialState = MenuScreenState(),
@@ -22,7 +22,7 @@ class MenuScreenViewModel(
         appRoleRepository.appRole.subscribe {
             state.copy(currentRole = it).update()
         }
-        isConnectionAvailableRepository.isConnectionAvailableFlow.subscribe {
+        isConnectionAvailableFlowUseCase().subscribe {
             state.copy(isConnected = it).update()
         }
     }

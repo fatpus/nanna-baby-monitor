@@ -49,6 +49,8 @@ style:
     ignoreAnnotated: [ 'Preview' ]
   ReturnCount:
     active: false
+  ThrowsCount:
+    max: 3
 
 # detekt 1.23 has plenty of false positives on suspend modifiers and dispatcher injection, ignore for now.
 coroutines:

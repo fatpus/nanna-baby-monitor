@@ -12,6 +12,9 @@ import io.ktor.websocket.close
 import io.ktor.websocket.pingInterval
 import io.ktor.websocket.timeout
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.vpilo.babymonitor.common.Logger
 import org.vpilo.babymonitor.model.AppRole
@@ -72,7 +75,7 @@ suspend fun relayWss(
             }
         }
 
-    client.use {
+    client.useAwaitingClose {
         it.wss(
             method = HttpMethod.Get,
             host = configuration.host,
@@ -145,3 +148,21 @@ private suspend fun DefaultClientWebSocketSession.throwOnRelayVersionMismatch() 
 }
 
 private const val TAG = "RelayConnection"
+
+/** Owns a relay client's lifetime, including failures before access authentication. */
+internal suspend fun <T> HttpClient.useAwaitingClose(block: suspend (HttpClient) -> T): T {
+    val clientJob = coroutineContext.job
+    val engineJob = engine.coroutineContext.job
+    try {
+        return use { block(it) }
+    } finally {
+        // A failed TLS negotiation may leave producer children awaiting consumers.
+        // The relay owns this client and its engine for exactly one connection.
+        clientJob.cancel()
+        engineJob.cancel()
+        withContext(NonCancellable) {
+            clientJob.join()
+            engineJob.join()
+        }
+    }
+}

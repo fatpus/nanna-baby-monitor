@@ -10,9 +10,12 @@ interface NetworkClientRepository {
 
     val serverStateFlow: Flow<ServerState>
 
+    /** Returns when the processor accepts ownership, before setup or authentication. */
     suspend fun connect(server: Device.Server)
 
+    /** Returns after all preceding connection-owned network work has finished cleanup. */
     suspend fun disconnect()
 
-    fun reset()
+    /** Completes the same teardown as disconnect, restoring the initial disconnected state. */
+    suspend fun reset()
 }

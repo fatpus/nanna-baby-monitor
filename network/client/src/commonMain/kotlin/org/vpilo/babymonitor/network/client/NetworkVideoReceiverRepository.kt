@@ -1,104 +1,27 @@
 package org.vpilo.babymonitor.network.client
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.onEach
 import org.vpilo.babymonitor.codec.VideoDecoder
 import org.vpilo.babymonitor.model.OpaqueVideoStream
-import org.vpilo.babymonitor.model.repository.LocalClientDeviceRepository
 import org.vpilo.babymonitor.model.repository.StreamingVideoReceiverRepository
-import org.vpilo.babymonitor.network.client.websockets.videoStreamingClientWebSocket
-import org.vpilo.babymonitor.network.internal.repository.InternalActiveSessionsRepository
-import org.vpilo.babymonitor.network.model.Constants
-import org.vpilo.babymonitor.network.model.Endpoints
-import org.vpilo.babymonitor.network.model.repository.PairingStorageRepository
-import org.vpilo.babymonitor.network.model.repository.RelayConfigurationRepository
 import kotlin.coroutines.CoroutineContext
 
 internal class NetworkVideoReceiverRepository(
-    private val dataSource: NetworkVideoDataSource,
-    private val serverSelectionDataSource: ServerSelectionDataSource,
-    private val pairingStorageRepository: PairingStorageRepository,
-    private val relayConfigurationRepository: RelayConfigurationRepository,
-    private val activeSessionsRepository: InternalActiveSessionsRepository,
-    private val localClientDeviceRepository: LocalClientDeviceRepository,
+    dataSource: NetworkVideoDataSource,
     coroutineContext: CoroutineContext,
 ) : StreamingVideoReceiverRepository {
     private val coroutineScope = CoroutineScope(coroutineContext)
-
-    private val decoder: VideoDecoder =
-        VideoDecoder(
-            input = dataSource.frames,
-            coroutineContext = coroutineContext,
-        )
-
+    private val decoder = VideoDecoder(input = dataSource.frames, coroutineContext = coroutineContext)
     override val videoStream: OpaqueVideoStream = decoder.videoStream
     override val isActive: Flow<Boolean> = videoStream.isActive
 
-    private var handler: WebSocketConnectionHandler? = null
-    private var connectionJob: Job? = null
-
     init {
         isActive
-            .map { isActive ->
-                if (isActive) {
-                    start()
-                } else {
-                    stop()
-                }
+            .onEach { active ->
+                if (active) decoder.start() else decoder.stop()
             }.launchIn(coroutineScope)
-    }
-
-    private fun start() {
-        connectionJob =
-            coroutineScope.launch {
-                try {
-                    serverSelectionDataSource.server.collect { target ->
-                        handler?.disconnect()
-                        handler = null
-                        if (target == null) return@collect
-                        val localDevice = localClientDeviceRepository.localDevice.first()
-                        val expectedFingerprint =
-                            pairingStorageRepository.find(target.id)?.certFingerprint
-                                ?: error("Not paired with $target - unable to connect")
-                        handler =
-                            WebSocketConnectionHandler(
-                                device = target,
-                                endpointPath = Endpoints.STREAM_VIDEO,
-                                sessionBlock = {
-                                    videoStreamingClientWebSocket(
-                                        localDevice = localDevice,
-                                        serverDeviceId = target.id,
-                                        dataSource = dataSource,
-                                        pairingStorageRepository = pairingStorageRepository,
-                                        activeSessionsRepository = activeSessionsRepository,
-                                    )
-                                },
-                                expectedFingerprint = expectedFingerprint,
-                                relayConfiguration = relayConfigurationRepository.relayConfiguration.first(),
-                                coroutineScope = coroutineScope,
-                                onDisconnected = {
-                                    delay(Constants.RECONNECTION_TIMEOUT)
-                                    handler?.connect()
-                                },
-                            ).apply { connect() }
-                    }
-                } finally {
-                    handler?.disconnect()
-                    handler = null
-                }
-            }
-        decoder.start()
-    }
-
-    private fun stop() {
-        decoder.stop()
-        connectionJob?.cancel()
-        connectionJob = null
     }
 }
