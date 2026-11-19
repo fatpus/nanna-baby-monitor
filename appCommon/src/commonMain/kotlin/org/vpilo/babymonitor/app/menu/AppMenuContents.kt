@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.NoiseAware
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.outlined.Output
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import babymonitor.appcommon.generated.resources.Res
@@ -92,17 +93,17 @@ fun ColumnScope.AppMenuContents(
         )
     }
 
+    if (currentRole == AppRole.CLIENT && PlatformAvailability.AndroidOnly.isSupportedOnCurrentPlatform) {
+        MenuSettingEnumItem(
+            setting = Setting.AudioOutputRoute,
+            imageVector = Icons.Outlined.Output,
+        )
+    }
+
     MenuSettingItem(
         setting = Setting.DeviceName,
         imageVector = Icons.Default.Person,
     )
-
-    if (currentRole == AppRole.CLIENT && PlatformAvailability.AndroidOnly.isSupportedOnCurrentPlatform) {
-        MenuSettingEnumItem(
-            setting = Setting.AudioOutputRoute,
-            imageVector = Icons.Default.VolumeUp,
-        )
-    }
 
     MenuDivider()
 
