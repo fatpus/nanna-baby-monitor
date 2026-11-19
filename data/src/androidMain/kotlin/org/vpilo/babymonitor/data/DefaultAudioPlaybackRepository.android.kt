@@ -82,7 +82,7 @@ internal actual class DefaultAudioPlaybackRepository actual constructor(
             launch {
                 Logger.d(TAG) { "Starting audio playback on $route" }
                 input.collect { chunk ->
-                    if (!isActive) return@collect
+                    if (!this@launch.isActive) return@collect
                     audioTrack.write(chunk, 0, chunk.size)
                 }
             }.invokeOnCompletion {

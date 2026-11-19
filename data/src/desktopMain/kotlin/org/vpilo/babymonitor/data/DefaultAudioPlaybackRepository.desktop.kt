@@ -14,7 +14,7 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 
 internal actual class DefaultAudioPlaybackRepository actual constructor(
-    @Suppress("UNUSED_PARAMETER") settingsRepository: SettingsRepository,
+    settingsRepository: SettingsRepository,
 ) : AudioPlaybackRepository {
     override suspend fun play(input: AudioFrameFlow) {
         val audioFormat =
@@ -34,7 +34,7 @@ internal actual class DefaultAudioPlaybackRepository actual constructor(
             launch {
                 Logger.d(TAG) { "Starting audio playback" }
                 input.collect { chunk ->
-                    if (!isActive) return@collect
+                    if (!this@launch.isActive) return@collect
                     audioLine.write(chunk, 0, chunk.size)
                 }
             }.invokeOnCompletion {
