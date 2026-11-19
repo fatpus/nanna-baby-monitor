@@ -6,6 +6,8 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
@@ -117,16 +119,37 @@ internal actual class DefaultAudioPlaybackRepository actual constructor(
     private companion object {
         private const val TAG = "DefaultAudioPlaybackRepository"
 
-        private val HEADSET_TYPES =
+        private val HEADSET_TYPES_BASE =
             intArrayOf(
                 AudioDeviceInfo.TYPE_WIRED_HEADSET,
                 AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
                 AudioDeviceInfo.TYPE_USB_HEADSET,
-                AudioDeviceInfo.TYPE_BLE_HEADSET,
-                AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            )
+
+        @RequiresApi(Build.VERSION_CODES.Q)
+        private val HEADSET_TYPES_Q =
+            intArrayOf(
                 AudioDeviceInfo.TYPE_HEARING_AID,
             )
+
+        @RequiresApi(Build.VERSION_CODES.S)
+        private val HEADSET_TYPES_S =
+            intArrayOf(
+                AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            )
+
+        private val HEADSET_TYPES: IntArray by lazy {
+            var types = HEADSET_TYPES_BASE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                types += HEADSET_TYPES_Q
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                types += HEADSET_TYPES_S
+            }
+            types
+        }
     }
 }
