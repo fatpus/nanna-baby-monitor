@@ -13,7 +13,6 @@ import org.vpilo.babymonitor.settings.model.makeSetting
 
 /**
  * Where received monitor audio is played on an Android watching device.
- * The previous build always used voice-call routing, which sticks to the earpiece.
  */
 enum class AudioOutputRoute {
     EARPIECE,
