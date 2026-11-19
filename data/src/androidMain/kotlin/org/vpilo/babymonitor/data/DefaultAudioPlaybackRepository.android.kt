@@ -14,12 +14,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 import org.vpilo.babymonitor.common.Logger
+import org.vpilo.babymonitor.data.settings.AudioOutputRoute
 import org.vpilo.babymonitor.model.AudioFrameFlow
+import org.vpilo.babymonitor.model.AudioOutputRoute
 import org.vpilo.babymonitor.model.MediaFormats
 import org.vpilo.babymonitor.model.repository.AudioPlaybackRepository
 import org.vpilo.babymonitor.settings.model.Setting
 import org.vpilo.babymonitor.settings.model.repository.SettingsRepository
-import org.vpilo.babymonitor.settings.model.settings.AudioOutputRoute
 
 internal actual class DefaultAudioPlaybackRepository actual constructor(
     private val settingsRepository: SettingsRepository,
